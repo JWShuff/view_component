@@ -1232,4 +1232,10 @@ class RenderingTest < ViewComponent::TestCase
     refute_selector(".cache-component__cache-key", text: component.cache_key)
     refute_selector(".cache-component__cache-message", text: "foo bar")
   end
+
+  def test_localised_component
+    render_inline(LocalisedComponent.new)
+
+    assert_selector("div", text: "salut,monde!")
+  end
 end
