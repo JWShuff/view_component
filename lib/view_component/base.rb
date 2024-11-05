@@ -111,14 +111,7 @@ module ViewComponent
       before_render
 
       if render?
-        rendered_template =
-          if compiler.renders_template_for?(@__vc_variant, request&.format&.to_sym)
-            render_template_for(@__vc_variant, request&.format&.to_sym)
-          else
-            maybe_escape_html(render_template_for(@__vc_variant, request&.format&.to_sym)) do
-              Kernel.warn("WARNING: The #{self.class} component rendered HTML-unsafe output. The output will be automatically escaped, but you may want to investigate.")
-            end
-          end.to_s
+        rendered_template = render_template_for(@__vc_variant, __vc_request&.format&.to_sym).to_s
 
         if view_cache_dependencies.present?
           Rails.cache.fetch(view_cache_dependencies) do
@@ -292,7 +285,14 @@ module ViewComponent
     #
     # @return [ActionDispatch::Request]
     def request
-      @request ||= controller.request if controller.respond_to?(:request)
+      __vc_request
+    end
+
+    # Enables consumers to override request/@request
+    #
+    # @private
+    def __vc_request
+      @__vc_request ||= controller.request if controller.respond_to?(:request)
     end
 
     # The content passed to the component instance as a block.
@@ -343,7 +343,7 @@ module ViewComponent
     end
 
     def maybe_escape_html(text)
-      return text if request && !request.format.html?
+      return text if __vc_request && !__vc_request.format.html?
       return text if text.blank?
 
       if text.html_safe?
@@ -364,10 +364,6 @@ module ViewComponent
       maybe_escape_html(output_postamble) do
         Kernel.warn("WARNING: The #{self.class} component was provided an HTML-unsafe postamble. The postamble will be automatically escaped, but you may want to investigate.")
       end
-    end
-
-    def compiler
-      @compiler ||= self.class.compiler
     end
 
     # Set the controller used for testing components:
@@ -465,8 +461,16 @@ module ViewComponent
     #  Defaults to `false`.
 
     class << self
+      # The file path of the component Ruby file.
+      #
+      # @return [String]
+      attr_reader :identifier
+
       # @private
-      attr_accessor :source_location, :virtual_path
+      attr_writer :identifier
+
+      # @private
+      attr_accessor :virtual_path
 
       # Find sidecar files for the given extensions.
       #
@@ -476,13 +480,13 @@ module ViewComponent
       # For example, one might collect sidecar CSS files that need to be compiled.
       # @param extensions [Array<String>] Extensions of which to return matching sidecar files.
       def sidecar_files(extensions)
-        return [] unless source_location
+        return [] unless identifier
 
         extensions = extensions.join(",")
 
         # view files in a directory named like the component
-        directory = File.dirname(source_location)
-        filename = File.basename(source_location, ".rb")
+        directory = File.dirname(identifier)
+        filename = File.basename(identifier, ".rb")
         component_name = name.demodulize.underscore
 
         # Add support for nested components defined in the same file.
@@ -507,7 +511,7 @@ module ViewComponent
 
         sidecar_directory_files = Dir["#{directory}/#{component_name}/#{filename}.*{#{extensions}}"]
 
-        (sidecar_files - [source_location] + sidecar_directory_files + nested_component_files).uniq
+        (sidecar_files - [identifier] + sidecar_directory_files + nested_component_files).uniq
       end
 
 
@@ -529,9 +533,10 @@ module ViewComponent
       # ```
       #
       # @param collection [Enumerable] A list of items to pass the ViewComponent one at a time.
+      # @param spacer_component [ViewComponent::Base] Component instance to be rendered between items.
       # @param args [Arguments] Arguments to pass to the ViewComponent every time.
-      def with_collection(collection, **args)
-        Collection.new(self, collection, **args)
+      def with_collection(collection, spacer_component: nil, **args)
+        Collection.new(self, collection, spacer_component, **args)
       end
 
       # @private
@@ -567,11 +572,11 @@ module ViewComponent
         # has been re-defined by the consuming application, likely in ApplicationComponent.
         # We use `base_label` method here instead of `label` to avoid cases where the method
         # owner is included in a prefix like `ApplicationComponent.inherited`.
-        child.source_location = caller_locations(1, 10).reject { |l| l.base_label == "inherited" }[0].path
+        child.identifier = caller_locations(1, 10).reject { |l| l.base_label == "inherited" }[0].path
 
         # If Rails application is loaded, removes the first part of the path and the extension.
         if defined?(Rails) && Rails.application
-          child.virtual_path = child.source_location.gsub(
+          child.virtual_path = child.identifier.gsub(
             /(.*#{Regexp.quote(ViewComponent::Base.config.view_component_path)})|(\.rb)/, ""
           )
         end
@@ -607,15 +612,6 @@ module ViewComponent
       # @private
       def compiler
         @__vc_compiler ||= Compiler.new(self)
-      end
-
-      # @private
-      def identifier
-        # :nocov:
-        Kernel.warn("WARNING: The #{self.class}.identifier is undocumented and was meant for internal framework usage only. As it is no longer used by the framework it will be removed in a coming non-breaking ViewComponent release.")
-
-        source_location
-        # :nocov:
       end
 
       # Set the parameter name used when rendering elements of a collection ([documentation](/guide/collections)):
@@ -655,7 +651,7 @@ module ViewComponent
       # validate that the default parameter name
       # is accepted, as support for collection
       # rendering is optional.
-      # @private TODO: add documentation
+      # @private
       def validate_collection_parameter!(validate_default: false)
         parameter = validate_default ? collection_parameter : provided_collection_parameter
 
@@ -675,7 +671,7 @@ module ViewComponent
       # Ensure the component initializer doesn't define
       # invalid parameters that could override the framework's
       # methods.
-      # @private TODO: add documentation
+      # @private
       def validate_initialization_parameters!
         return unless initialize_parameter_names.include?(RESERVED_PARAMETER)
 
