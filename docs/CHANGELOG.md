@@ -10,6 +10,10 @@ nav_order: 5
 
 ## main
 
+* Add first class component cache.
+
+    *Reegan Viljoen*
+
 * Ensure HTML output safety wrapper is used for all inline templates.
 
     *Joel Hawksley*
@@ -59,10 +63,6 @@ nav_order: 5
 * Fix `preview_paths` in docs.
 
     *Javier Aranda*
-
-* Add first class component cache.
-
-    *Reegan Viljoen*
 
 ## 3.17.0
 
