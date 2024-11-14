@@ -261,6 +261,26 @@ class IntegrationTest < ActionDispatch::IntegrationTest
     Rails.cache.clear
   end
 
+  def test_rendering_cached_component
+    Rails.cache.clear
+    ActionController::Base.perform_caching = true
+
+    get "/controller_inline_cached"
+    assert_response :success
+    body = response.body
+    assert_select('.cache-component__cache-message', text: "foo bar")
+
+    get "/controller_inline_cached?foo=laser&bar=beams"
+    assert(response.body != body)
+    assert_select('.cache-component__cache-message', text: "laser beams")
+
+    get "/controller_inline_cached"
+    assert(response.body === body)
+
+    ActionController::Base.perform_caching = false
+    Rails.cache.clear
+  end
+
   def test_optional_rendering_component_depending_on_request_context
     get "/render_check"
     assert_response :success

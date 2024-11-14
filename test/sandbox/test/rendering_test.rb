@@ -1217,16 +1217,20 @@ class RenderingTest < ViewComponent::TestCase
   end
 
   def test_cache_component
+    require 'pry'
     component = CacheComponent.new(foo: "foo", bar: "bar")
     render_inline(component)
 
+    binding.pry
     assert_selector(".cache-component__cache-key", text: component.view_cache_dependencies)
     assert_selector(".cache-component__cache-message", text: "foo bar")
 
+    # Is this really testing caching?
     render_inline(CacheComponent.new(foo: "foo", bar: "bar"))
 
     assert_selector(".cache-component__cache-key", text: component.view_cache_dependencies)
 
+    # Now we use Foo, Baz and the original component hasn't changed.
     render_inline(CacheComponent.new(foo: "foo", bar: "baz"))
 
     refute_selector(".cache-component__cache-key", text: component.view_cache_dependencies)
